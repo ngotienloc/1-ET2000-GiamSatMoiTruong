@@ -1,0 +1,133 @@
+//Khai báo thư viện điều khiển hồng ngoại  
+#include <IRremote.h> 
+const int RECV_PIN = 13; 
+unsigned long lastTime = millis(); 
+
+
+//Khai báo thư viện giao tiếp lcd bằng i2c 
+#include <Wire.h> 
+#include <LiquidCrystal_I2C.h> 
+LiquidCrystal_I2C lcd(0x27, 16, 2); 
+
+
+//Cảm biến nhiệt độ - Độ ẩm  
+#include "DHT.h"    //Khai báo thư viện cho cảm biến nhiệt độ - độ ẩm DHT11  
+#define DHT11Pin 7  //Khai báo chân digital (Chân 7)
+#define DHTType DHT11 
+DHT HT(DHT11Pin,DHTType); 
+
+//Cảm biến chất lượng không khí  
+#include "MQ135.h"  //Khai báo thư viện cho Cảm biến MQ135 
+#define PIN_MQ135 A2 //Khai báo chân digital (Chân A2)
+MQ135 mq135_sensor = MQ135(PIN_MQ135);    
+
+//Khai báo chân đèn:  
+int ledxanh=9;   int ledvang=10;     int leddo=11; 
+
+void setup() { 
+Serial.begin(9600); 
+lcd.begin(16, 2); 
+
+//Khởi động bộ thu 
+IrReceiver.begin(RECV_PIN, true, 2);  
+HT.begin();  
+delay(1000); //Thời gian delay t =1s (1000ms = 1s)
+pinMode(9,OUTPUT);  //Khai báo đầu ra 
+pinMode(10,OUTPUT); //Khai báo đầu ra 
+pinMode(11,OUTPUT); //Khai báo đầu ra 
+
+lcd.init();    //Khởi tạo màn hình LCD 
+lcd.backlight();   //Bật đèn màn hình lCD 
+lcd.setCursor(2,0);  //Đặt con trỏ bắt đầu từ cột 2 dòng 0 
+lcd.print("Air Quality"); //In ra màn hình lcd  
+lcd.setCursor(4,1);  // Đặt con trỏ bắt đầu từ cột 4 dòng 1 
+lcd.print("Detector"); //In ra màn hình lcd 
+delay(3000);  //Thời gian delay là 3s 
+
+lcd.clear();  //Xóa toàn bộ kí tự trên màn hình lcd 
+lcd.setCursor(2,0); //Đặt con trỏ bắt đầu từ cột 2 dòng 0 
+lcd.print("Please Wait");//    In ra màn hình lcd 
+lcd.setCursor(0,1); //Đặt con trỏ bắt đầu từ cột 0 dòng 1 
+lcd.print("................");  //In ra màn hình lcd 
+delay(5000);// Thời gian delay : 5s
+} 
+
+  
+
+void loop() { 
+float  h = HT.readHumidity();   //Gắn biến h = độ ẩm   
+float  t = HT.readTemperature();  //Gắn biến t = độ ẩm 
+float rzero = mq135_sensor.getRZero();   //Lấy hệ số trung bình của thư viện 
+float correctedRZero = mq135_sensor.getCorrectedRZero(t,h);  //Lấy hệ số được tính từ nhiệt độ và độ ẩm 
+float resistance = mq135_sensor.getResistance();       //Lấy khoảng cách tối đa mà cảm biến phát hiện ra. 
+
+float ppm = mq135_sensor.getPPM(); //Lấy giá trị ppm trung bình  
+float correctedPPM = mq135_sensor.getCorrectedPPM(t,h);  //Giá trị ppm chính xác + nhiệt độ,độ ẩm  
+//Các thao tác trên máy ảo ( Máy tính ) Nhằm kiểm tra xem các cảm biến có hoạt động bình thường không 
+Serial.print(t); //In giá trị nhiệt độ lên máy tính  
+Serial.print("    "); 
+Serial.print(h); //In giá trị độ ẩm lên máy tính 
+Serial.print("    ");
+
+Serial.print("\t Resistance: "); 
+Serial.print(resistance);   //Lấy khoảng cách tối đa mà cảm biến phát hiện ra.
+
+
+Serial.print("\t Corrected PPM: "); 
+Serial.print(correctedPPM); //Lấy giá trị nồng độ khí CO2 
+Serial.println("ppm"); 
+delay(500); 
+
+if (correctedPPM<600) { digitalWrite(9,HIGH);  digitalWrite(10,LOW); digitalWrite(11,LOW);}    //Hiển thị trạng thái led chỉ số ô nhiếm kk mức tốt 
+else if (correctedPPM<1000) { digitalWrite(9,LOW);  digitalWrite(10,HIGH); digitalWrite(11,LOW);}    //Hiển thị trạng thái led chỉ số ô nhiễm kk mức trung bình, kém 
+else { digitalWrite(9,LOW);  digitalWrite(10,LOW); digitalWrite(11,HIGH);}   //Hiển thị trạng thái led chỉ số ô nhiễm không khí mức xấu , rất xấu  
+delay(1000); 
+
+lcd.clear();  
+lcd.setCursor(2,0);  //Đưa con trỏ đến cột 2 dòng 0
+
+lcd.print("Air Quality: "); //In ra chữ Air Quality
+lcd.setCursor(4,1); //Đưa con trỏ đến cột 4 dòng 1 
+lcd.print(correctedPPM);  //In giá trị nồng độ CO2
+lcd.setCursor(9,1); //Đưa con trỏ đến cột 9 dòng 1
+lcd.print("ppm");  //In chữ ppm
+delay(1000); //Thời gian delay: 1s 
+
+//Thao tác trên cảm biến hồng ngoại 
+if (IrReceiver.decode()) { 
+uint32_t dataRemote = IrReceiver.decodedIRData.decodedRawData; 
+if(dataRemote>0){ 
+Serial.println(dataRemote); 
+if (millis() - lastTime > 250) { 
+
+switch(dataRemote){ 
+case 4077715200:      //Số 1 trên bảng điều khiển  
+lcd.clear(); 
+lcd.setCursor(0,0); 
+lcd.print("DO AM:"); 
+
+lcd.setCursor(7,0); 
+lcd.print(h,0); 
+
+lcd.setCursor(9,0); 
+lcd.print("%"); 
+
+lcd.setCursor(0,1); 
+lcd.print("NHIET DO:"); 
+
+lcd.setCursor(10,1); 
+lcd.print(t,1); 
+
+lcd.setCursor(14,1); 
+lcd.print("C"); 
+delay(1000); 
+
+      } 
+
+    } 
+
+  } 
+lastTime = millis(); 
+IrReceiver.resume();//cho phép nhận giá trị tiếp theo 
+}
+}
